@@ -32,13 +32,11 @@
 		"crons": ["0 0 * * *"]
 	},
 	// =============================================
-	// 公開設定値 (非シークレット)
 	// シークレット値は `wrangler secret put` で設定してください:
-	//   wrangler secret put ANTHROPIC_API_KEY
-	//   wrangler secret put RESEND_API_KEY
-	//   wrangler secret put SENDER_EMAIL
+	//   wrangler secret put ANTHROPIC_API_KEY   # Anthropic APIキー
+	//   wrangler secret put RESEND_API_KEY      # Resend APIキー
+	//   wrangler secret put SENDER_EMAIL        # 送信元メールアドレス
+	//   wrangler secret put RECIPIENT_EMAIL     # 受信メールアドレス
+	//   wrangler secret put RECIPIENT_NAME      # 受信者名（任意）
 	// =============================================
-	"vars": {
-		"DIGEST_RECIPIENT_EMAIL": "masayuki.echizen@gmail.com"
-	}
 }

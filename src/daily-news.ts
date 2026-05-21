@@ -12,6 +12,8 @@ export interface DigestEnv {
   ANTHROPIC_API_KEY: string;
   RESEND_API_KEY: string;
   SENDER_EMAIL: string;
+  RECIPIENT_EMAIL: string;
+  RECIPIENT_NAME?: string;
 }
 
 export interface RunResult {
@@ -67,11 +69,11 @@ export async function runDailyNewsDigest(env: DigestEnv): Promise<RunResult> {
   console.log(`[DailyNews] Digest generated: ${digest.articleCount} articles, subject: ${digest.subject}`);
 
   // 3. メール送信
-  console.log(`[DailyNews] Sending email to ${DIGEST_CONFIG.recipientEmail}...`);
+  console.log(`[DailyNews] Sending email to ${env.RECIPIENT_EMAIL}...`);
   const sendResult = await sendEmailViaResend(
     {
-      to: DIGEST_CONFIG.recipientEmail,
-      toName: DIGEST_CONFIG.recipientName,
+      to: env.RECIPIENT_EMAIL,
+      toName: env.RECIPIENT_NAME,
       from: env.SENDER_EMAIL,
       fromName: DIGEST_CONFIG.senderName,
       subject: digest.subject,

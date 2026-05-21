@@ -4,8 +4,6 @@
  */
 
 export const DIGEST_CONFIG = {
-  recipientEmail: "masayuki.echizen@gmail.com",
-  recipientName: "越前 昌之",
   senderName: "Claude Daily News Digest",
   language: "ja" as const,
   timezone: "Asia/Tokyo",

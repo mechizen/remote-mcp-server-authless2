@@ -75,6 +75,8 @@ export class MyMCP extends McpAgent {
           ANTHROPIC_API_KEY?: string;
           RESEND_API_KEY?: string;
           SENDER_EMAIL?: string;
+          RECIPIENT_EMAIL?: string;
+          RECIPIENT_NAME?: string;
         };
 
         if (!env.ANTHROPIC_API_KEY) {
@@ -105,6 +107,17 @@ export class MyMCP extends McpAgent {
               {
                 type: "text",
                 text: "❌ エラー: SENDER_EMAIL が設定されていません。\n`wrangler secret put SENDER_EMAIL` で設定してください。",
+              },
+            ],
+          };
+        }
+
+        if (!dry_run && !env.RECIPIENT_EMAIL) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "❌ エラー: RECIPIENT_EMAIL が設定されていません。\n`wrangler secret put RECIPIENT_EMAIL` で設定してください。",
               },
             ],
           };
@@ -141,6 +154,8 @@ export class MyMCP extends McpAgent {
           ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY!,
           RESEND_API_KEY: env.RESEND_API_KEY!,
           SENDER_EMAIL: env.SENDER_EMAIL!,
+          RECIPIENT_EMAIL: env.RECIPIENT_EMAIL!,
+          RECIPIENT_NAME: env.RECIPIENT_NAME,
         });
 
         if (result.success) {
@@ -208,11 +223,18 @@ export default {
         ANTHROPIC_API_KEY?: string;
         RESEND_API_KEY?: string;
         SENDER_EMAIL?: string;
+        RECIPIENT_EMAIL?: string;
+        RECIPIENT_NAME?: string;
       };
 
-      if (!envWithSecrets.ANTHROPIC_API_KEY || !envWithSecrets.RESEND_API_KEY || !envWithSecrets.SENDER_EMAIL) {
+      if (
+        !envWithSecrets.ANTHROPIC_API_KEY ||
+        !envWithSecrets.RESEND_API_KEY ||
+        !envWithSecrets.SENDER_EMAIL ||
+        !envWithSecrets.RECIPIENT_EMAIL
+      ) {
         return new Response(
-          JSON.stringify({ error: "Required secrets not configured" }),
+          JSON.stringify({ error: "Required secrets not configured (ANTHROPIC_API_KEY, RESEND_API_KEY, SENDER_EMAIL, RECIPIENT_EMAIL)" }),
           { status: 500, headers: { "Content-Type": "application/json" } },
         );
       }
@@ -222,6 +244,8 @@ export default {
           ANTHROPIC_API_KEY: envWithSecrets.ANTHROPIC_API_KEY,
           RESEND_API_KEY: envWithSecrets.RESEND_API_KEY,
           SENDER_EMAIL: envWithSecrets.SENDER_EMAIL,
+          RECIPIENT_EMAIL: envWithSecrets.RECIPIENT_EMAIL,
+          RECIPIENT_NAME: envWithSecrets.RECIPIENT_NAME,
         }).then((result) => {
           console.log("[Trigger] Manual run result:", JSON.stringify(result));
         }),
@@ -247,11 +271,18 @@ export default {
       ANTHROPIC_API_KEY?: string;
       RESEND_API_KEY?: string;
       SENDER_EMAIL?: string;
+      RECIPIENT_EMAIL?: string;
+      RECIPIENT_NAME?: string;
     };
 
-    if (!envWithSecrets.ANTHROPIC_API_KEY || !envWithSecrets.RESEND_API_KEY || !envWithSecrets.SENDER_EMAIL) {
+    if (
+      !envWithSecrets.ANTHROPIC_API_KEY ||
+      !envWithSecrets.RESEND_API_KEY ||
+      !envWithSecrets.SENDER_EMAIL ||
+      !envWithSecrets.RECIPIENT_EMAIL
+    ) {
       console.error(
-        "[Cron] Missing required secrets: ANTHROPIC_API_KEY, RESEND_API_KEY, or SENDER_EMAIL",
+        "[Cron] Missing required secrets: ANTHROPIC_API_KEY, RESEND_API_KEY, SENDER_EMAIL, or RECIPIENT_EMAIL",
       );
       return;
     }
@@ -261,6 +292,8 @@ export default {
         ANTHROPIC_API_KEY: envWithSecrets.ANTHROPIC_API_KEY,
         RESEND_API_KEY: envWithSecrets.RESEND_API_KEY,
         SENDER_EMAIL: envWithSecrets.SENDER_EMAIL,
+        RECIPIENT_EMAIL: envWithSecrets.RECIPIENT_EMAIL,
+        RECIPIENT_NAME: envWithSecrets.RECIPIENT_NAME,
       }).then((result) => {
         if (result.success) {
           console.log(
