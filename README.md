@@ -1,50 +1,176 @@
-# Building a Remote MCP Server on Cloudflare (Without Auth)
+# Daily News Digest MCP Server
 
-This example allows you to deploy a remote MCP server that doesn't require authentication on Cloudflare Workers. 
+Cloudflare Workers + Claude AI による **日次ニュースダイジェスト自動配信サービス**。
 
-## Get started: 
+毎朝 9:00 JST に、設定した興味分野のニュースを RSS から収集し、Claude AI が日本語でまとめてメールで配信します。
+MCP ツールとしても公開しており、**Claude Routines** から手動・定期実行も可能です。
 
-[![Deploy to Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/ai/tree/main/demos/remote-mcp-authless)
+---
 
-This will deploy your MCP server to a URL like: `remote-mcp-server-authless.<your-account>.workers.dev/sse`
+## 🗂 機能概要
 
-Alternatively, you can use the command line below to get the remote MCP Server created on your local machine:
+| 機能 | 詳細 |
+|------|------|
+| 📰 ニュース収集 | 15+ の RSS フィードから最新ニュースを自動取得 |
+| 🤖 AI 要約 | Claude Haiku が英語記事を日本語でわかりやすく要約 |
+| 📧 メール配信 | Resend API 経由でリッチ HTML メールを送信 |
+| ⏰ 自動実行 | Cloudflare Cron Trigger で毎朝 9:00 JST に自動実行 |
+| 🛠 MCP ツール | Claude Routines / Claude Code から手動実行可能 |
+
+---
+
+## 📰 配信カテゴリ（興味分野）
+
+- 💻 IT・テクノロジー（TechCrunch, The Verge, Ars Technica）
+- 🤖 AI・AIエージェント（VentureBeat AI, MarkTechPost）
+- 🔒 サイバーセキュリティ・CDN・WAF・ゼロトラスト（Krebs on Security, The Hacker News, Dark Reading）
+- 🌐 SaaS・インターネット産業（TechCrunch Enterprise, ZDNet）
+- ⚽ スポーツ（BBC Sport, ESPN）
+- 📈 株式・経済・マネー（MarketWatch, Investing.com）
+- ✈️ 旅行・観光（Lonely Planet, Travel+Leisure）
+- 🎨 芸術・文化（Hyperallergic）
+- 📚 英語学習（BBC Learning English）
+
+---
+
+## 🚀 セットアップ
+
+### 1. 依存関係のインストール
+
 ```bash
-npm create cloudflare@latest -- my-mcp-server --template=cloudflare/ai/demos/remote-mcp-authless
+npm install
 ```
 
-## Customizing your MCP Server
+### 2. Cloudflare Workers シークレットの設定
 
-To add your own [tools](https://developers.cloudflare.com/agents/model-context-protocol/tools/) to the MCP server, define each tool inside the `init()` method of `src/index.ts` using `this.server.tool(...)`. 
+以下の3つのシークレットを設定してください：
 
-## Connect to Cloudflare AI Playground
+```bash
+# Anthropic API キー（Claude AI 要約に使用）
+# 取得: https://console.anthropic.com/
+wrangler secret put ANTHROPIC_API_KEY
 
-You can connect to your MCP server from the Cloudflare AI Playground, which is a remote MCP client:
+# Resend API キー（メール送信に使用）
+# 取得: https://resend.com/api-keys
+wrangler secret put RESEND_API_KEY
 
-1. Go to https://playground.ai.cloudflare.com/
-2. Enter your deployed MCP server URL (`remote-mcp-server-authless.<your-account>.workers.dev/sse`)
-3. You can now use your MCP tools directly from the playground!
+# 送信元メールアドレス（Resend で検証済みドメインのアドレス）
+# 例: digest@yourdomain.com または onboarding@resend.dev（テスト用）
+wrangler secret put SENDER_EMAIL
+```
 
-## Connect Claude Desktop to your MCP server
+> **Resend のドメイン設定**: Resend にログインし、送信元ドメインを DNS 検証してください。
+> 無料プランでは `@resend.dev` のアドレスを使用できます。
 
-You can also connect to your remote MCP server from local MCP clients, by using the [mcp-remote proxy](https://www.npmjs.com/package/mcp-remote). 
+### 3. デプロイ
 
-To connect to your MCP server from Claude Desktop, follow [Anthropic's Quickstart](https://modelcontextprotocol.io/quickstart/user) and within Claude Desktop go to Settings > Developer > Edit Config.
+```bash
+npm run deploy
+```
 
-Update with this configuration:
+デプロイ後、Cloudflare Dashboard の Workers & Pages → 対象 Worker → Triggers タブで
+Cron Trigger（`0 0 * * *`）が有効になっていることを確認してください。
+
+---
+
+## 🛠 MCP ツール
+
+### `send_daily_news_digest`
+
+Claude Routines や Claude Code から日次ダイジェストを手動送信・テストするツール。
+
+**パラメータ:**
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|-----|-----------|------|
+| `dry_run` | boolean | `false` | `true` にするとメール送信せずダイジェスト内容を表示（テスト用） |
+
+---
+
+## 📅 Claude Routines での設定方法
+
+Claude Code の Routines 機能を使って、毎朝 MCP ツールを呼び出す設定:
+
+```
+毎朝9時にMCPツール send_daily_news_digest を呼び出して
+masayuki.echizen@gmail.com にニュースダイジェストを送信してください。
+```
+
+> **注**: Cloudflare Cron Trigger（`0 0 * * *` UTC = 09:00 JST）でも同じ自動実行が可能です。
+
+---
+
+## 📡 Claude Desktop / Claude Code への接続方法
+
+`claude_desktop_config.json` に以下を追加：
 
 ```json
 {
   "mcpServers": {
-    "calculator": {
+    "daily-news-digest": {
       "command": "npx",
       "args": [
         "mcp-remote",
-        "http://localhost:8787/sse"  // or remote-mcp-server-authless.your-account.workers.dev/sse
+        "https://remote-mcp-server-authless2.<your-account>.workers.dev/sse"
       ]
     }
   }
 }
 ```
 
-Restart Claude and you should see the tools become available. 
+---
+
+## 🔧 ローカル開発
+
+```bash
+# 開発サーバー起動
+npm run dev
+
+# ヘルスチェック
+curl http://localhost:8787/health
+
+# 手動トリガー（ローカルでテスト）
+curl -X POST http://localhost:8787/trigger
+```
+
+---
+
+## 📡 API エンドポイント
+
+| パス | メソッド | 説明 |
+|------|---------|------|
+| `/mcp` | GET/POST | MCP プロトコルエンドポイント |
+| `/sse` | GET | Server-Sent Events エンドポイント |
+| `/health` | GET | ヘルスチェック |
+| `/trigger` | POST | 手動でダイジェスト送信をトリガー |
+
+---
+
+## 📦 技術スタック
+
+- **Runtime**: Cloudflare Workers (Durable Objects)
+- **Framework**: [agents SDK](https://github.com/cloudflare/agents) + MCP SDK
+- **AI**: Anthropic Claude Haiku (`claude-haiku-4-5`)
+- **Email**: [Resend](https://resend.com)
+- **Scheduling**: Cloudflare Cron Triggers
+- **Language**: TypeScript
+
+---
+
+## 🔑 必要な API キー
+
+| サービス | 用途 | 取得先 |
+|---------|------|--------|
+| Anthropic API | Claude AI による日本語要約 | https://console.anthropic.com/ |
+| Resend API | メール送信 | https://resend.com |
+
+---
+
+## ⚙️ カスタマイズ
+
+`src/config.ts` を編集して：
+- 配信先メールアドレスの変更
+- RSS フィードの追加・削除
+- カテゴリ構成の変更
+- 1カテゴリあたりの記事数調整
+
+が可能です。

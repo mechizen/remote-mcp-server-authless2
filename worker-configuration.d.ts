@@ -5,6 +5,12 @@ declare namespace Cloudflare {
 		OAUTH_KV: KVNamespace;
 		MCP_OBJECT: DurableObjectNamespace<import("./src/index").MyMCP>;
 		ASSETS: Fetcher;
+		// Public vars (wrangler.jsonc [vars])
+		DIGEST_RECIPIENT_EMAIL: string;
+		// Secrets (set via `wrangler secret put`)
+		ANTHROPIC_API_KEY: string;
+		RESEND_API_KEY: string;
+		SENDER_EMAIL: string;
 	}
 }
 interface Env extends Cloudflare.Env {}

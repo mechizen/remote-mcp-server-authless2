@@ -24,5 +24,21 @@
 	},
 	"observability": {
 		"enabled": true
+	},
+	// =============================================
+	// Cron Trigger: 毎朝 UTC 00:00 (JST 09:00) に実行
+	// =============================================
+	"triggers": {
+		"crons": ["0 0 * * *"]
+	},
+	// =============================================
+	// 公開設定値 (非シークレット)
+	// シークレット値は `wrangler secret put` で設定してください:
+	//   wrangler secret put ANTHROPIC_API_KEY
+	//   wrangler secret put RESEND_API_KEY
+	//   wrangler secret put SENDER_EMAIL
+	// =============================================
+	"vars": {
+		"DIGEST_RECIPIENT_EMAIL": "masayuki.echizen@gmail.com"
 	}
 }
