@@ -239,22 +239,20 @@ export default {
         );
       }
 
-      ctx.waitUntil(
-        runDailyNewsDigest({
-          ANTHROPIC_API_KEY: envWithSecrets.ANTHROPIC_API_KEY,
-          RESEND_API_KEY: envWithSecrets.RESEND_API_KEY,
-          SENDER_EMAIL: envWithSecrets.SENDER_EMAIL,
-          RECIPIENT_EMAIL: envWithSecrets.RECIPIENT_EMAIL,
-          RECIPIENT_NAME: envWithSecrets.RECIPIENT_NAME,
-        }).then((result) => {
-          console.log("[Trigger] Manual run result:", JSON.stringify(result));
-        }),
-      );
+      // waitUntil を使わず同期的に実行して結果を返す
+      // （waitUntil はレスポンス返送後にキャンセルされる場合があるため）
+      const result = await runDailyNewsDigest({
+        ANTHROPIC_API_KEY: envWithSecrets.ANTHROPIC_API_KEY,
+        RESEND_API_KEY: envWithSecrets.RESEND_API_KEY,
+        SENDER_EMAIL: envWithSecrets.SENDER_EMAIL,
+        RECIPIENT_EMAIL: envWithSecrets.RECIPIENT_EMAIL,
+        RECIPIENT_NAME: envWithSecrets.RECIPIENT_NAME,
+      });
 
-      return new Response(
-        JSON.stringify({ message: "News digest triggered", status: "running" }),
-        { headers: { "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify(result, null, 2), {
+        status: result.success ? 200 : 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     return new Response("Not found", { status: 404 });
