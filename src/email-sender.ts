@@ -28,14 +28,8 @@ export async function sendEmailViaResend(
   resendApiKey: string,
 ): Promise<SendResult> {
   try {
-    const from = payload.fromName
-      ? `${payload.fromName} <${payload.from}>`
-      : payload.from;
-
-    const to = payload.toName
-      ? `${payload.toName} <${payload.to}>`
-      : payload.to;
-
+    // 表示名付き "Name <email>" 形式は Resend のテストモード検証で
+    // アドレス照合が失敗するため、素のメールアドレスのみで送信する
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -43,8 +37,8 @@ export async function sendEmailViaResend(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from,
-        to: [to],
+        from: payload.from,
+        to: [payload.to],
         subject: payload.subject,
         html: payload.html,
         ...(payload.text ? { text: payload.text } : {}),
