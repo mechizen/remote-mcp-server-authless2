@@ -1,15 +1,14 @@
 /**
  * News Fetcher
- * RSSフィードからニュースを取得するモジュール
+ * Hacker News API / Reddit JSON / RSS からニュースを取得
  */
 
-import { FEED_SOURCES, CATEGORY_ORDER, type FeedSource } from "./config";
+import { NEWS_SOURCES, CATEGORY_ORDER, type NewsSource } from "./config";
 
 export interface NewsItem {
   title: string;
   link: string;
   description: string;
-  pubDate: string;
   category: string;
   categoryLabel: string;
   categoryEmoji: string;
@@ -23,212 +22,262 @@ export interface NewsByCategory {
   items: NewsItem[];
 }
 
-/**
- * XMLタグの内容を抽出（CDATA対応）
- */
-function extractTag(xml: string, tag: string): string {
-  // CDATA形式を優先して試みる
-  const cdataRegex = new RegExp(
-    `<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`,
-    "i",
+const FETCH_TIMEOUT_MS = 10000;
+const USER_AGENT =
+  "DailyNewsDigest/1.0 (Cloudflare Worker; https://github.com/mechizen/daily-news-digest)";
+
+async function safeFetch(url: string, headers?: Record<string, string>): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": USER_AGENT, ...headers },
+    });
+    clearTimeout(id);
+    if (!res.ok) {
+      console.warn(`[Fetch] ${res.status} ${url}`);
+      return null;
+    }
+    return await res.text();
+  } catch (e) {
+    console.warn(`[Fetch] Error ${url}: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
+}
+
+// ============================================================
+// Hacker News API
+// ============================================================
+interface HNItem {
+  id: number;
+  title?: string;
+  url?: string;
+  score?: number;
+  by?: string;
+  descendants?: number;
+}
+
+async function fetchHackerNews(source: NewsSource): Promise<NewsItem[]> {
+  const idsText = await safeFetch("https://hacker-news.firebaseio.com/v0/topstories.json");
+  if (!idsText) return [];
+
+  const allIds: number[] = JSON.parse(idsText);
+  // キーワードフィルタがある場合は多めに取得してフィルタリング
+  const fetchCount = source.keywords ? 60 : source.maxItems * 2;
+  const ids = allIds.slice(0, fetchCount);
+
+  const items = await Promise.all(
+    ids.map((id) =>
+      safeFetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`).then((text) =>
+        text ? (JSON.parse(text) as HNItem) : null,
+      ),
+    ),
   );
-  const cdataMatch = cdataRegex.exec(xml);
-  if (cdataMatch) return cdataMatch[1].trim();
 
-  // 通常のXMLタグ
-  const normalRegex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i");
-  const normalMatch = normalRegex.exec(xml);
-  if (normalMatch) return normalMatch[1].trim();
+  let valid = items.filter((i): i is HNItem => !!i && !!i.title && !!i.url);
 
+  // キーワードフィルタ
+  if (source.keywords && source.keywords.length > 0) {
+    const kws = source.keywords.map((k) => k.toLowerCase());
+    valid = valid.filter((i) => kws.some((kw) => i.title!.toLowerCase().includes(kw)));
+  }
+
+  return valid.slice(0, source.maxItems).map((i) => ({
+    title: i.title!,
+    link: i.url!,
+    description: `スコア: ${i.score ?? 0} | コメント: ${i.descendants ?? 0}`,
+    category: source.category,
+    categoryLabel: source.categoryLabel,
+    categoryEmoji: source.categoryEmoji,
+    source: "Hacker News",
+  }));
+}
+
+// ============================================================
+// Reddit JSON API
+// ============================================================
+interface RedditPost {
+  data: {
+    title: string;
+    url: string;
+    selftext: string;
+    score: number;
+    permalink: string;
+    is_self: boolean;
+  };
+}
+
+interface RedditResponse {
+  data: { children: RedditPost[] };
+}
+
+async function fetchReddit(source: NewsSource): Promise<NewsItem[]> {
+  if (!source.subreddit) return [];
+
+  const tf = source.timeFilter ?? "day";
+  const url = `https://www.reddit.com/r/${source.subreddit}/top.json?limit=25&t=${tf}`;
+  const text = await safeFetch(url, {
+    Accept: "application/json",
+  });
+  if (!text) return [];
+
+  let parsed: RedditResponse;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return [];
+  }
+
+  const posts = parsed?.data?.children ?? [];
+
+  return posts
+    .filter((p) => p.data.title && p.data.url)
+    .slice(0, source.maxItems)
+    .map((p) => {
+      const d = p.data;
+      const link = d.is_self
+        ? `https://www.reddit.com${d.permalink}`
+        : d.url;
+      const desc = d.selftext
+        ? d.selftext.slice(0, 150) + (d.selftext.length > 150 ? "..." : "")
+        : `スコア: ${d.score}`;
+      return {
+        title: d.title,
+        link,
+        description: desc,
+        category: source.category,
+        categoryLabel: source.categoryLabel,
+        categoryEmoji: source.categoryEmoji,
+        source: `r/${source.subreddit}`,
+      };
+    });
+}
+
+// ============================================================
+// RSS フィード
+// ============================================================
+function extractXmlTag(xml: string, tag: string): string {
+  const cdata = new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, "i").exec(xml);
+  if (cdata) return cdata[1].trim();
+  const normal = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i").exec(xml);
+  if (normal) return normal[1].trim();
   return "";
 }
 
-/**
- * HTMLタグとエンティティを除去してプレーンテキスト化
- */
-function cleanText(text: string): string {
+function cleanHtml(text: string): string {
   return text
     .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&apos;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ").trim();
 }
 
-/**
- * URLからドメイン名（ソース名）を抽出
- */
-function extractSourceName(url: string): string {
-  try {
-    const domain = new URL(url).hostname;
-    return domain.replace(/^www\./, "").replace(/\.(com|org|net|io|co\.jp)$/, "");
-  } catch {
-    return url;
-  }
+function domainOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
-/**
- * RSSフィードをフェッチしてパース
- */
-async function fetchFeed(source: FeedSource): Promise<NewsItem[]> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+async function fetchRSS(source: NewsSource): Promise<NewsItem[]> {
+  if (!source.url) return [];
+  const text = await safeFetch(source.url, {
+    Accept: "application/rss+xml, application/xml, text/xml, */*",
+  });
+  if (!text) return [];
 
-    const response = await fetch(source.url, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; DailyNewsDigest/1.0; +https://github.com/mechizen/remote-mcp-server-authless2)",
-        Accept: "application/rss+xml, application/xml, text/xml, */*",
-      },
+  const items: NewsItem[] = [];
+  const itemRe = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = itemRe.exec(text)) !== null && items.length < source.maxItems) {
+    const block = m[1];
+    const title = cleanHtml(extractXmlTag(block, "title"));
+    let link = extractXmlTag(block, "link");
+    if (!link) {
+      const href = block.match(/<link[^>]+href=["']([^"']+)["']/i);
+      if (href) link = href[1];
+    }
+    if (!title || !link) continue;
+
+    const rawDesc =
+      extractXmlTag(block, "description") ||
+      extractXmlTag(block, "summary") ||
+      extractXmlTag(block, "content");
+    const desc = cleanHtml(rawDesc).slice(0, 180);
+
+    items.push({
+      title,
+      link,
+      description: desc,
+      category: source.category,
+      categoryLabel: source.categoryLabel,
+      categoryEmoji: source.categoryEmoji,
+      source: domainOf(source.url),
     });
+  }
+  return items;
+}
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn(`Feed fetch failed: ${source.url} (${response.status})`);
-      return [];
-    }
-
-    const xml = await response.text();
-    const sourceName = extractSourceName(source.url);
-    const items: NewsItem[] = [];
-
-    // <item> または <entry> タグを抽出（RSS 2.0 と Atom 対応）
-    const itemRegex = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/g;
-    let match: RegExpExecArray | null;
-    let count = 0;
-
-    while ((match = itemRegex.exec(xml)) !== null && count < source.maxItems) {
-      const itemXml = match[1];
-
-      const title = cleanText(extractTag(itemXml, "title"));
-      // Atom の <link href="..."/> に対応
-      let link = extractTag(itemXml, "link");
-      if (!link) {
-        const hrefMatch = itemXml.match(/<link[^>]+href=["']([^"']+)["']/i);
-        if (hrefMatch) link = hrefMatch[1];
-      }
-      const description = cleanText(
-        extractTag(itemXml, "description") ||
-          extractTag(itemXml, "summary") ||
-          extractTag(itemXml, "content"),
-      );
-      const pubDate =
-        extractTag(itemXml, "pubDate") ||
-        extractTag(itemXml, "published") ||
-        extractTag(itemXml, "updated") ||
-        "";
-
-      if (title && link) {
-        // 説明文は最大200文字に制限
-        const shortDesc = description.length > 200 ? description.slice(0, 200) + "..." : description;
-
-        items.push({
-          title,
-          link,
-          description: shortDesc,
-          pubDate,
-          category: source.category,
-          categoryLabel: source.categoryLabel,
-          categoryEmoji: source.categoryEmoji,
-          source: sourceName,
-        });
-        count++;
-      }
-    }
-
-    return items;
-  } catch (error) {
-    console.warn(
-      `Error fetching feed ${source.url}:`,
-      error instanceof Error ? error.message : String(error),
-    );
-    return [];
+// ============================================================
+// 統合フェッチ
+// ============================================================
+async function fetchSource(source: NewsSource): Promise<NewsItem[]> {
+  switch (source.type) {
+    case "hackernews": return fetchHackerNews(source);
+    case "reddit":     return fetchReddit(source);
+    case "rss":        return fetchRSS(source);
   }
 }
 
-/**
- * 全フィードからニュースを取得してカテゴリ別に整理
- */
 export async function fetchAllNews(): Promise<NewsByCategory[]> {
-  // 並列でフィードを取得
-  const results = await Promise.allSettled(FEED_SOURCES.map((source) => fetchFeed(source)));
+  const results = await Promise.allSettled(NEWS_SOURCES.map(fetchSource));
 
-  // カテゴリ別にまとめる
   const categoryMap = new Map<string, NewsByCategory>();
 
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled" && result.value.length > 0) {
-      const source = FEED_SOURCES[index];
-      const key = source.category;
+  results.forEach((result, i) => {
+    if (result.status !== "fulfilled" || result.value.length === 0) return;
+    const src = NEWS_SOURCES[i];
+    const key = src.category;
 
-      if (!categoryMap.has(key)) {
-        categoryMap.set(key, {
-          category: key,
-          categoryLabel: source.categoryLabel,
-          categoryEmoji: source.categoryEmoji,
-          items: [],
-        });
-      }
+    if (!categoryMap.has(key)) {
+      categoryMap.set(key, {
+        category: key,
+        categoryLabel: src.categoryLabel,
+        categoryEmoji: src.categoryEmoji,
+        items: [],
+      });
+    }
 
-      const existing = categoryMap.get(key)!;
-      // 重複タイトルを除外して追加
-      for (const item of result.value) {
-        const isDuplicate = existing.items.some(
-          (i) => i.title.toLowerCase() === item.title.toLowerCase(),
-        );
-        if (!isDuplicate) {
-          existing.items.push(item);
-        }
-      }
+    const cat = categoryMap.get(key)!;
+    for (const item of result.value) {
+      const dup = cat.items.some(
+        (x) => x.title.toLowerCase() === item.title.toLowerCase(),
+      );
+      if (!dup) cat.items.push(item);
     }
   });
 
-  // カテゴリ順にソートして返す
   const sorted: NewsByCategory[] = [];
-  for (const cat of CATEGORY_ORDER) {
-    if (categoryMap.has(cat)) {
-      sorted.push(categoryMap.get(cat)!);
-    }
+  for (const key of CATEGORY_ORDER) {
+    if (categoryMap.has(key)) sorted.push(categoryMap.get(key)!);
   }
-
-  // CATEGORY_ORDER に含まれないカテゴリも追加
-  for (const [key, value] of categoryMap.entries()) {
-    if (!CATEGORY_ORDER.includes(key)) {
-      sorted.push(value);
-    }
+  for (const [key, val] of categoryMap) {
+    if (!CATEGORY_ORDER.includes(key)) sorted.push(val);
   }
 
   return sorted;
 }
 
-/**
- * ニュースデータをAI要約用のプレーンテキストに変換
- */
 export function formatNewsForAI(newsByCategory: NewsByCategory[]): string {
   const lines: string[] = [];
-
-  for (const category of newsByCategory) {
-    if (category.items.length === 0) continue;
-
-    lines.push(`\n## ${category.categoryEmoji} ${category.categoryLabel}`);
-    for (let i = 0; i < category.items.length; i++) {
-      const item = category.items[i];
+  for (const cat of newsByCategory) {
+    if (!cat.items.length) continue;
+    lines.push(`\n## ${cat.categoryEmoji} ${cat.categoryLabel}`);
+    cat.items.forEach((item, i) => {
       lines.push(`\n${i + 1}. **${item.title}**`);
       lines.push(`   出典: ${item.source}`);
-      if (item.description) {
-        lines.push(`   概要: ${item.description}`);
-      }
+      if (item.description) lines.push(`   概要: ${item.description}`);
       lines.push(`   URL: ${item.link}`);
-    }
+    });
   }
-
   return lines.join("\n");
 }

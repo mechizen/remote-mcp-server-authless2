@@ -7,167 +7,161 @@ export const DIGEST_CONFIG = {
   senderName: "Claude Daily News Digest",
   language: "ja" as const,
   timezone: "Asia/Tokyo",
-  // UTC 00:00 = JST 09:00
   cronSchedule: "0 0 * * *",
 };
 
-export interface FeedSource {
-  url: string;
+export type SourceType = "hackernews" | "reddit" | "rss";
+
+export interface NewsSource {
+  type: SourceType;
   category: string;
   categoryLabel: string;
   categoryEmoji: string;
   maxItems: number;
+  // RSS
+  url?: string;
+  // Reddit
+  subreddit?: string;
+  timeFilter?: "day" | "week";
+  // HN: キーワードフィルタ（省略時は上位記事をそのまま使用）
+  keywords?: string[];
 }
 
-export const FEED_SOURCES: FeedSource[] = [
-  // IT・テクノロジー
+export const NEWS_SOURCES: NewsSource[] = [
+  // IT・テクノロジー（Hacker News トップ）
   {
-    url: "https://techcrunch.com/feed/",
+    type: "hackernews",
     category: "tech",
     categoryLabel: "IT・テクノロジー",
     categoryEmoji: "💻",
-    maxItems: 3,
-  },
-  {
-    url: "https://www.theverge.com/rss/index.xml",
-    category: "tech",
-    categoryLabel: "IT・テクノロジー",
-    categoryEmoji: "💻",
-    maxItems: 2,
-  },
-  {
-    url: "https://feeds.arstechnica.com/arstechnica/index",
-    category: "tech",
-    categoryLabel: "IT・テクノロジー",
-    categoryEmoji: "💻",
-    maxItems: 2,
+    maxItems: 5,
   },
 
-  // AI・AIエージェント
+  // AI・AIエージェント（HN フィルタ + Reddit）
   {
-    url: "https://venturebeat.com/category/ai/feed/",
+    type: "hackernews",
     category: "ai",
     categoryLabel: "AI・AIエージェント",
     categoryEmoji: "🤖",
     maxItems: 4,
+    keywords: ["AI", "LLM", "GPT", "Claude", "Gemini", "agent", "machine learning", "neural", "model", "OpenAI", "Anthropic", "artificial intelligence", "deep learning"],
   },
   {
-    url: "https://www.marktechpost.com/feed/",
+    type: "reddit",
     category: "ai",
     categoryLabel: "AI・AIエージェント",
     categoryEmoji: "🤖",
+    subreddit: "MachineLearning",
     maxItems: 2,
+    timeFilter: "day",
   },
 
-  // サイバーセキュリティ・CDN・WAF・ゼロトラスト
+  // サイバーセキュリティ（RSS は比較的通りやすいソース）
   {
-    url: "https://krebsonsecurity.com/feed/",
+    type: "rss",
     category: "security",
     categoryLabel: "サイバーセキュリティ・ゼロトラスト",
     categoryEmoji: "🔒",
-    maxItems: 2,
-  },
-  {
     url: "https://feeds.feedburner.com/TheHackersNews",
-    category: "security",
-    categoryLabel: "サイバーセキュリティ・ゼロトラスト",
-    categoryEmoji: "🔒",
     maxItems: 3,
   },
   {
-    url: "https://www.darkreading.com/rss/all.xml",
+    type: "rss",
     category: "security",
     categoryLabel: "サイバーセキュリティ・ゼロトラスト",
     categoryEmoji: "🔒",
+    url: "https://krebsonsecurity.com/feed/",
     maxItems: 2,
   },
 
-  // インターネット産業・SaaS
+  // SaaS・インターネット産業（Reddit）
   {
-    url: "https://techcrunch.com/category/enterprise/feed/",
+    type: "reddit",
     category: "saas",
     categoryLabel: "SaaS・インターネット産業",
     categoryEmoji: "🌐",
+    subreddit: "SaaS",
     maxItems: 3,
+    timeFilter: "day",
   },
   {
-    url: "https://www.zdnet.com/topic/cloud/rss.xml",
+    type: "reddit",
     category: "saas",
     categoryLabel: "SaaS・インターネット産業",
     categoryEmoji: "🌐",
+    subreddit: "startups",
     maxItems: 2,
+    timeFilter: "day",
   },
 
-  // スポーツ
+  // 株式・経済・マネー（Reddit）
   {
+    type: "reddit",
+    category: "finance",
+    categoryLabel: "株式・経済・マネー",
+    categoryEmoji: "📈",
+    subreddit: "investing",
+    maxItems: 3,
+    timeFilter: "day",
+  },
+  {
+    type: "reddit",
+    category: "finance",
+    categoryLabel: "株式・経済・マネー",
+    categoryEmoji: "📈",
+    subreddit: "stocks",
+    maxItems: 2,
+    timeFilter: "day",
+  },
+
+  // スポーツ（BBC RSS + Reddit）
+  {
+    type: "rss",
+    category: "sports",
+    categoryLabel: "スポーツ",
+    categoryEmoji: "⚽",
     url: "https://feeds.bbci.co.uk/sport/rss.xml",
-    category: "sports",
-    categoryLabel: "スポーツ",
-    categoryEmoji: "⚽",
     maxItems: 3,
   },
   {
-    url: "https://www.espn.com/espn/rss/news",
+    type: "reddit",
     category: "sports",
     categoryLabel: "スポーツ",
     categoryEmoji: "⚽",
+    subreddit: "sports",
     maxItems: 2,
+    timeFilter: "day",
   },
 
-  // 株式・経済・マネー
+  // 旅行・観光（Reddit）
   {
-    url: "https://feeds.marketwatch.com/marketwatch/topstories/",
-    category: "finance",
-    categoryLabel: "株式・経済・マネー",
-    categoryEmoji: "📈",
+    type: "reddit",
+    category: "travel",
+    categoryLabel: "旅行・観光",
+    categoryEmoji: "✈️",
+    subreddit: "travel",
     maxItems: 3,
-  },
-  {
-    url: "https://www.investing.com/rss/news_25.rss",
-    category: "finance",
-    categoryLabel: "株式・経済・マネー",
-    categoryEmoji: "📈",
-    maxItems: 2,
+    timeFilter: "day",
   },
 
-  // 旅行・観光
+  // 芸術・文化（Reddit）
   {
-    url: "https://www.lonelyplanet.com/blog/feed",
-    category: "travel",
-    categoryLabel: "旅行・観光",
-    categoryEmoji: "✈️",
-    maxItems: 2,
-  },
-  {
-    url: "https://www.travelandleisure.com/rss",
-    category: "travel",
-    categoryLabel: "旅行・観光",
-    categoryEmoji: "✈️",
-    maxItems: 2,
-  },
-
-  // 芸術・文化
-  {
-    url: "https://hyperallergic.com/feed/",
+    type: "reddit",
     category: "arts",
     categoryLabel: "芸術・文化",
     categoryEmoji: "🎨",
-    maxItems: 2,
+    subreddit: "Art",
+    maxItems: 3,
+    timeFilter: "day",
   },
 
-  // 英語学習
+  // 英語学習（BBC RSS）
   {
+    type: "rss",
+    category: "english",
+    categoryLabel: "英語学習",
+    categoryEmoji: "📚",
     url: "https://www.bbc.co.uk/learningenglish/english/features/6-minute-english.rss",
-    category: "english",
-    categoryLabel: "英語学習",
-    categoryEmoji: "📚",
-    maxItems: 2,
-  },
-  {
-    url: "https://feeds.bbci.co.uk/learningenglish/rss.xml",
-    category: "english",
-    categoryLabel: "英語学習",
-    categoryEmoji: "📚",
     maxItems: 2,
   },
 ];
