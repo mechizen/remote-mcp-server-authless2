@@ -22,7 +22,7 @@ export interface NewsByCategory {
   items: NewsItem[];
 }
 
-const FETCH_TIMEOUT_MS = 5000;
+const FETCH_TIMEOUT_MS = 10000;
 const USER_AGENT =
   "DailyNewsDigest/1.0 (Cloudflare Worker; https://github.com/mechizen/daily-news-digest)";
 

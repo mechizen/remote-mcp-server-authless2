@@ -58,7 +58,7 @@ async function generateJapaneseSummary(
 ${rawNews}`;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -70,7 +70,7 @@ ${rawNews}`;
     },
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [
         {
